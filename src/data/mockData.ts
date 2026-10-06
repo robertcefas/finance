@@ -23,6 +23,7 @@ export interface Friend {
   initials: string;
   color: string;
   phone: string;
+  pix?: string;
   totalOwed: number;
   status: "pending" | "paid";
   debts: Debt[];
@@ -37,6 +38,8 @@ export interface Debt {
   current: number;
   total: number;
   paid: boolean;
+  paidMonth?: string;
+  startMonth?: string; // "AAAA-MM" da 1ª parcela
 }
 
 export interface Expense {
@@ -47,6 +50,8 @@ export interface Expense {
   cardId: string;
   amount: number;
   date: string;
+  paid?: boolean;
+  installments?: number;
 }
 
 export interface FixedExpense {
@@ -54,6 +59,7 @@ export interface FixedExpense {
   name: string;
   amount: number;
   active: boolean;
+  cardId?: string;
 }
 
 export const INITIAL_FIXED_EXPENSES: FixedExpense[] = [];

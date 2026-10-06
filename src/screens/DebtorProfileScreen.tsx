@@ -2,22 +2,8 @@ import { useEffect, useState } from "react";
 import { fmt } from "../data/mockData";
 import type { Card, Friend, Debt, Screen } from "../data/mockData";
 import { getCurrentMonthOwed } from "../utils/finance";
+import { S } from "../theme";
 
-const S = {
-  bg: "#0d0d12",
-  surface: "#15151e",
-  surface2: "#1c1c28",
-  border: "#2a2a3a",
-  purple: "#a855f7",
-  purpleDim: "#7c3aed",
-  green: "#22c55e",
-  greenDim: "#16a34a",
-  muted: "#6b7280",
-  text: "#f1f0ff",
-  text2: "#a1a1b5",
-  orange: "#f97316",
-  blue: "#3b82f6",
-};
 
 const CARD_COLOR: Record<string, string> = {
   nubank: S.purple,
@@ -30,30 +16,48 @@ const CARD_NAME: Record<string, string> = {
   xp: "XP Cartão",
 };
 
+const CASH_CARD: Card = {
+  id: "cash",
+  name: "Dinheiro",
+  bank: "Dinheiro",
+  limit: 0,
+  closing: 1,
+  due: 1,
+  color: "#22c55e",
+};
+
 interface Props {
+  cardUsage: Record<string, number>;
   navigate: (s: Screen, data?: unknown) => void;
   friend: Friend;
   cards: Card[];
   onAddDebt: (friendId: string, debt: Debt) => void;
   onMarkDebtPaid: (friendId: string, debtId: string) => void;
   onDeleteDebt: (friendId: string, debtId: string) => void;
+  onReactivateDebt: (friendId: string, debtId: string) => void;
+  onUpdatePix: (friendId: string, pix: string) => void;
+  onUpdateFriend: (friendId: string, name: string, phone: string) => void;
   initialOpenAddDebt?: boolean;
 }
 
 export default function DebtorProfileScreen({
+  cardUsage,
   navigate,
   friend,
   cards,
   onAddDebt,
   onMarkDebtPaid,
   onDeleteDebt,
+  onReactivateDebt,
+  onUpdatePix,
+  onUpdateFriend,
   initialOpenAddDebt = false,
 }: Props) {
   const [debts, setDebts] = useState<Debt[]>(friend.debts);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newAmount, setNewAmount] = useState("");
-  const [newCard, setNewCard] = useState("nubank");
+  const [newCard, setNewCard] = useState(cards[0]?.id ?? "cash");
   const [newInstall, setNewInstall] = useState("1");
   const [toast, setToast] = useState("");
   const [actionDebtId, setActionDebtId] = useState<string | null>(null);
@@ -67,6 +71,10 @@ export default function DebtorProfileScreen({
     }
   }, [initialOpenAddDebt, friend.id]);
 
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const visiblePaid = debts.filter(
+    (d) => d.paid && (!d.paidMonth || d.paidMonth === currentMonth),
+  );
   const totalOwed = getCurrentMonthOwed(debts);
   const parsedTotalAmount = newAmount
     ? parseFloat(newAmount.replace(",", ".")) || 0
@@ -74,7 +82,16 @@ export default function DebtorProfileScreen({
   const installmentsCount = parseInt(newInstall, 10) || 1;
   const installmentValue = parsedTotalAmount / installmentsCount;
 
-  const byCard = cards
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [editName, setEditName] = useState(friend.name);
+  const [editPhone, setEditPhone] = useState(friend.phone ?? "");
+  const saveInfo = () => {
+    if (!editName.trim()) return;
+    onUpdateFriend(friend.id, editName.trim(), editPhone.trim());
+    setEditingInfo(false);
+  };
+  const [pix, setPix] = useState(friend.pix ?? "");
+  const byCard = [...cards, CASH_CARD]
     .map((card) => ({
       card,
       debts: debts.filter((d) => d.cardId === card.id && !d.paid),
@@ -90,6 +107,7 @@ export default function DebtorProfileScreen({
   };
 
   const handleUndo = (id: string) => {
+    onReactivateDebt(friend.id, id);
     setDebts((prev) =>
       prev.map((d) => (d.id === id ? { ...d, paid: false } : d)),
     );
@@ -102,8 +120,14 @@ export default function DebtorProfileScreen({
     showToast("Dívida removida 🗑");
   };
 
+  const debtCard = cards.find((c) => c.id === newCard);
+  const debtAvailable = debtCard
+    ? debtCard.limit - (cardUsage[debtCard.id] ?? 0)
+    : Infinity;
+  const debtOverLimit = !!debtCard && parsedTotalAmount > debtAvailable;
+
   const handleAddDebt = () => {
-    if (!newTitle.trim() || !newAmount) return;
+    if (!newTitle.trim() || !newAmount || debtOverLimit) return;
     const nd: Debt = {
       id: `debt-${Date.now()}`,
       title: newTitle.trim(),
@@ -155,6 +179,16 @@ export default function DebtorProfileScreen({
         >
           ← Devedores
         </button>
+        {editingInfo && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, background: S.surface, border: `1px solid ${S.border}`, borderRadius: 14, padding: 14 }}>
+            <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" style={{ width: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 12px", color: S.text, fontSize: 14, outline: "none" }} />
+            <input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Telefone (WhatsApp)" style={{ width: "100%", background: S.surface2, border: `1px solid ${S.border}`, borderRadius: 10, padding: "10px 12px", color: S.text, fontSize: 14, outline: "none" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={saveInfo} style={{ flex: 1, padding: 10, borderRadius: 10, border: "none", background: `${S.purple}30`, color: S.purple, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Salvar</button>
+              <button onClick={() => { setEditingInfo(false); setEditName(friend.name); setEditPhone(friend.phone ?? ""); }} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: S.surface2, color: S.muted, fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div
             style={{
@@ -183,6 +217,12 @@ export default function DebtorProfileScreen({
                 📱 {friend.phone}
               </p>
             )}
+            <button
+              onClick={() => setEditingInfo(true)}
+              style={{ marginTop: 6, background: "none", border: "none", color: S.purple, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0 }}
+            >
+              ✏️ Editar devedor
+            </button>
           </div>
           <div style={{ marginLeft: "auto" }}>
             <span
@@ -415,7 +455,7 @@ export default function DebtorProfileScreen({
       </div>
 
       {/* Paid debts */}
-      {debts.some((d) => d.paid) && (
+      {visiblePaid.length > 0 && (
         <div style={{ padding: "0 20px 0" }}>
           <p
             style={{
@@ -430,9 +470,7 @@ export default function DebtorProfileScreen({
             Pagos
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {debts
-              .filter((d) => d.paid)
-              .map((debt) => (
+            {visiblePaid.map((debt) => (
                 <div
                   key={debt.id}
                   style={{
@@ -458,7 +496,7 @@ export default function DebtorProfileScreen({
                       {debt.title}
                     </p>
                     <p style={{ color: S.muted, fontSize: 10, marginTop: 2 }}>
-                      {CARD_NAME[debt.cardId]}
+                      {debt.cardId === "cash" ? "Dinheiro" : (CARD_NAME[debt.cardId] ?? cards.find((c) => c.id === debt.cardId)?.bank)}
                     </p>
                   </div>
                   <div
@@ -475,6 +513,21 @@ export default function DebtorProfileScreen({
                       {fmt(debt.amount)}
                     </p>
                     <span style={{ color: S.green, fontSize: 12 }}>✓</span>
+                    <button
+                      onClick={() => handleUndo(debt.id)}
+                      style={{
+                        border: `1px solid ${S.purple}60`,
+                        background: `${S.purple}20`,
+                        color: S.purple,
+                        borderRadius: 8,
+                        padding: "4px 8px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ↺ Reativar
+                    </button>
                   </div>
                 </div>
               ))}
@@ -508,10 +561,29 @@ export default function DebtorProfileScreen({
         >
           + Adicionar Nova Dívida
         </button>
+        <input
+          value={pix}
+          onChange={(e) => setPix(e.target.value)}
+          onBlur={() => onUpdatePix(friend.id, pix.trim())}
+          placeholder="🔑 Minha chave Pix (salva para as cobranças)"
+          style={{
+            width: "100%",
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: `1px solid ${S.border}`,
+            background: S.surface,
+            color: S.text,
+            fontSize: 13,
+            outline: "none",
+          }}
+        />
         <button
           onClick={() => {
+            onUpdatePix(friend.id, pix.trim());
             const msg = encodeURIComponent(
-              `Oi ${friend.name}! Você tem ${fmt(totalOwed)} em aberto comigo. Pode verificar?`,
+              `Oi ${friend.name}! Você tem ${fmt(totalOwed)} em aberto comigo.` +
+                (pix.trim() ? `\nMinha chave Pix: ${pix.trim()}` : "") +
+                ` Pode verificar?`,
             );
             window.open(
               `https://wa.me/${friend.phone?.replace(/\D/g, "")}?text=${msg}`,
@@ -740,8 +812,8 @@ export default function DebtorProfileScreen({
               >
                 Cartão
               </label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {cards.map((c) => (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[...cards, CASH_CARD].map((c) => (
                   <button
                     key={c.id}
                     onClick={() => setNewCard(c.id)}
@@ -762,6 +834,11 @@ export default function DebtorProfileScreen({
                 ))}
               </div>
             </div>
+            {debtOverLimit && debtCard && (
+              <p style={{ color: "#ef4444", fontSize: 13, marginBottom: 10, textAlign: "center" }}>
+                ⚠️ Passa do limite do cartão {debtCard.name}. Disponível: {fmt(Math.max(debtAvailable, 0))}
+              </p>
+            )}
             <button
               onClick={handleAddDebt}
               style={{
